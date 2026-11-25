@@ -14,7 +14,12 @@ async fn goong(a: &App, path: &str, mut params: Vec<(&str, String)>) -> Result<V
     }
     params.push(("api_key", key));
     a.http
-        .get(format!("https://rsapi.goong.io/{path}"))
+        .get(format!(
+            "{}/{path}",
+            std::env::var("GOONG_BASE_URL")
+                .unwrap_or_else(|_| "https://rsapi.goong.io".into())
+                .trim_end_matches('/')
+        ))
         .query(&params)
         .send()
         .await
@@ -170,7 +175,10 @@ pub async fn push(a: &App) -> Result<()> {
         let payload = json!({"app_id":setting("ONESIGNAL_APP_ID"),"include_subscription_ids":devices,"contents":{"en":"Quán có đơn hàng mới. Mở trang quản lý để xác nhận."},"url":format!("{}/quan/{shop}",setting("PUBLIC_URL").trim_end_matches('/'))});
         let res = a
             .http
-            .post("https://api.onesignal.com/notifications")
+            .post(
+                std::env::var("ONESIGNAL_ENDPOINT")
+                    .unwrap_or_else(|_| "https://api.onesignal.com/notifications".into()),
+            )
             .header("Authorization", format!("Key {secret}"))
             .json(&payload)
             .send()

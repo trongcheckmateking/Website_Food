@@ -95,7 +95,7 @@ Tham khảo [Supabase Auth](https://supabase.com/docs/guides/auth), [OTP](https:
 
 1. Kết nối tài khoản nhận tiền của quán trên SePay. Điền mã ngân hàng theo định dạng dịch vụ QR chấp nhận vào `SHOP_BANK`, số tài khoản vào `SHOP_ACCOUNT`.
 2. Mỗi quán dùng một khóa webhook ngẫu nhiên riêng. Ví dụ `SHOP_WEBHOOK_ENV=SEPAY_KEY_DI` và `SEPAY_KEY_DI=<khóa riêng>`. Chạy lại `setup-shop`, rồi khởi động lại backend để nạp biến mới. Khi có nhiều quán, giữ các biến khóa của tất cả quán trong môi trường tiến trình.
-3. Trong SePay Webhooks, chọn nhận giao dịch vào của tài khoản đó. Chọn phương thức API key có header `Authorization: Apikey <khóa riêng>`. Đặt endpoint `https://ten-mien-cua-ban/api/shop/quan-cua-di/webhook`. Thiết lập cấu trúc mã thanh toán để trường `code` trả về nguyên mã đơn **DH + 16 ký tự hex viết hoa** (0–9, A–F). Mã hiển thị trên đơn chính là nội dung khách cần giữ khi chuyển.
+3. Trong SePay Webhooks, chọn nhận giao dịch vào của tài khoản đó. Chọn phương thức API key có header `Authorization: Apikey <khóa riêng>`. Đặt endpoint `https://ten-mien-cua-ban/api/shop/quan-cua-di/webhook`. Thiết lập cấu trúc mã thanh toán để trường `code` trả về nguyên mã đơn **DH + 16 ký tự hex viết hoa** (0–9, A–F). Trong SePay, chọn tiền tố DH, kiểu “Số và chữ”, độ dài hậu tố tối thiểu và tối đa đều bằng 16. Mã hiển thị trên đơn chính là nội dung khách cần giữ khi chuyển.
 4. Trong sandbox của nhà cung cấp, gửi một giao dịch đúng mã/tài khoản/tổng tiền, rồi gửi lại cùng transaction ID. Kỳ vọng một lần ghi nhận thanh toán. Thử chuyển thiếu tiền, sai nội dung hoặc trước lúc quán xác nhận. Bảng `transfers` giữ các sự kiện tiền vào chưa khớp để đối soát thủ công. Đơn chỉ đổi trạng thái thanh toán khi mọi điều kiện khớp.
 5. Khi đã kiểm tra sandbox, dùng cấu hình thật của quán và đối chiếu trực tiếp một đơn thử trước khi nhận khách. Hoàn tiền và xử lý chuyển thừa hiện là thao tác thủ công của quán.
 
@@ -147,6 +147,13 @@ Tạo database trên trước (ví dụ từ gốc repo chạy `docker compose e
 Khi triển khai, build frontend bằng `npm ci && npm run build`, build backend bằng `cargo build --release --locked`. Chạy binary với thư mục làm việc `backend/` hoặc đặt `WEB_DIST` là đường dẫn tuyệt đối tới `frontend/dist`. Axum phục vụ cả API và SPA trên cùng origin. Đặt HTTPS reverse proxy trước Axum, cấu hình đúng domain cho nhà cung cấp và cấp giới hạn yêu cầu cho endpoint xác thực/báo giá. Dùng PostgreSQL riêng có sao lưu và quản lý secret trong môi trường của host. Tệp Compose dùng mật khẩu local để phát triển. Đổi thông tin kết nối trước khi đưa lên máy chủ.
 
 Trước buổi bán đầu tiên, thử trên chính điện thoại của Dì: đăng nhập, bật push, khóa màn hình, gửi đơn từ điện thoại khác, kiểm tra thông báo, đặt giao thử bằng địa chỉ thật, khôi phục bằng email/SMS và chuyển một giao dịch thử được phép. Kết quả của các bước này phụ thuộc vào tên miền, tài khoản dịch vụ và thiết bị thực tế.
+
+### Kết quả kiểm tra của bản đóng gói
+
+- Rust build, unit test biên phí giao (3.000m, 3.001m, 4.000m, 4.001m), TypeScript và Vite build đều chạy thành công.
+- Kiểm thử tích hợp đã chạy với PostgreSQL. Hai khách tranh phần cuối chỉ tạo được một đơn. Đã thử hủy và trả tồn, mua tại quầy, COD, đề xuất giá mới, chặn truy cập đơn của khách khác, chat, điều kiện đánh giá và chống gửi đánh giá lại.
+- Đã chạy giao hàng theo báo giá, kiểm tra quyền sở hữu báo giá, webhook QR đúng/sai số tiền, webhook lặp và gửi thông báo từ hàng đợi bằng dịch vụ mô phỏng. Kiểm thử này sử dụng endpoint HTTP thật của ứng dụng. Các địa chỉ thay thế `GOONG_BASE_URL` và `ONESIGNAL_ENDPOINT` chỉ do môi trường máy chủ kiểm thử đặt. Giữ giá trị mặc định khi chạy với tài khoản thật.
+- Chromium đã chạy qua menu → chọn topping/ghi chú → giỏ → tài khoản ở 390×844 và 1366×900. Gửi SMS/email thật, Google OAuth thật, giao dịch ngân hàng thật, độ chính xác địa chỉ của quán và thông báo tới máy của Dì còn cần xác minh sau khi cấu hình các tài khoản tương ứng.
 
 ## GitHub
 

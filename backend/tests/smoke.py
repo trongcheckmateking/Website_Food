@@ -9,6 +9,7 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +19,33 @@ SLUG = "test-" + uuid.uuid4().hex[:10]
 
 
 class AuthDouble(BaseHTTPRequestHandler):
+    pushed = threading.Event()
+
+    def reply(self, body):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(body).encode())
+
+    def do_POST(self):
+        if self.path != "/notifications":
+            self.send_error(404)
+            return
+        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.headers.get("Authorization") != "Key test-push" or not payload["include_subscription_ids"]:
+            self.send_error(400)
+            return
+        self.pushed.set()
+        self.reply({"id":str(uuid.uuid4())})
+
     def do_GET(self):
+        path = urlsplit(self.path).path
+        if path == "/geocode":
+            self.reply({"results":[{"formatted_address":"Địa chỉ thử", "geometry":{"location":{"lat":10.78,"lng":106.68}}}]})
+            return
+        if path == "/Direction":
+            self.reply({"routes":[{"legs":[{"distance":{"value":3200}}]}]})
+            return
         value = self.headers.get("Authorization", "").removeprefix("Bearer ")
         if self.path != "/auth/v1/user" or value not in IDS:
             self.send_error(401)
@@ -39,7 +66,9 @@ def run():
            "SHOP_SLUG": SLUG, "SHOP_NAME": "Bếp thử", "SHOP_OWNER_ID": OWNER,
            "SHOP_ORIGIN": "10.77,106.69", "SHOP_BANK": "VCB", "SHOP_ACCOUNT": "test-account",
            "SHOP_WEBHOOK_ENV": "SEPAY_KEY_TEST", "SEPAY_KEY_TEST": "local-integration-key",
-           "ONESIGNAL_API_KEY": "", "SUPABASE_URL": f"http://127.0.0.1:{auth.server_port}",
+           "ONESIGNAL_API_KEY":"test-push","ONESIGNAL_APP_ID":"test-app",
+           "ONESIGNAL_ENDPOINT":f"http://127.0.0.1:{auth.server_port}/notifications",
+           "GOONG_API_KEY":"test-map", "GOONG_BASE_URL":f"http://127.0.0.1:{auth.server_port}", "SUPABASE_URL": f"http://127.0.0.1:{auth.server_port}",
            "SUPABASE_ANON_KEY": "test", "BIND": f"127.0.0.1:{port}"}
     cmd = [str(ROOT / "target/debug/quan-an-api")]
     subprocess.run(cmd + ["setup-shop"], cwd=ROOT, env=env, check=True)
@@ -121,9 +150,15 @@ def run():
         assert request(prefix)["items"][0]["reviews"][0]["stars"]==5
         request(prefix+"/items",OWNER,{**item,"id":product,"stock_delta":2})
         request(prefix+"/counter/"+product,OWNER,{})
-        cash={**order,"method":"cash","request_id":str(uuid.uuid4())}
+        request(prefix+"/subscription",OWNER,{"device":str(uuid.uuid4())})
+        quote=request(prefix+"/quote",OTHER,{"address":"123 Đường thử"})
+        assert quote["fee"]==10000 and quote["meters"]==3200
+        cash={**order,"method":"cash","quote":quote["id"],"expected_total":27000,"request_id":str(uuid.uuid4())}
+        request(prefix+"/orders",BUYER,cash,400)
         o=request(prefix+"/orders",OTHER,cash)
+        assert AuthDouble.pushed.wait(timeout=15), "push notification missing"
         url="/order/"+o["id"]
+        assert request(url,OTHER)["address"]=="Địa chỉ thử"
         request(url+"/state",OWNER,{"action":"confirm"})
         request(url+"/state",OWNER,{"action":"complete"})
         assert request(url,OTHER)["paid"]
